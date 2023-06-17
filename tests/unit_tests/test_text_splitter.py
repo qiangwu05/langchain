@@ -1,11 +1,13 @@
 """Test text splitting functionality."""
+from typing import List
+
 import pytest
 
 from langchain.docstore.document import Document
 from langchain.text_splitter import (
     CharacterTextSplitter,
-    CodeTextSplitter,
     Language,
+    MarkdownHeaderTextSplitter,
     PythonCodeTextSplitter,
     RecursiveCharacterTextSplitter,
 )
@@ -119,6 +121,21 @@ def test_create_documents_with_metadata() -> None:
     assert docs == expected_docs
 
 
+def test_create_documents_with_start_index() -> None:
+    """Test create documents method."""
+    texts = ["foo bar baz 123"]
+    splitter = CharacterTextSplitter(
+        separator=" ", chunk_size=7, chunk_overlap=3, add_start_index=True
+    )
+    docs = splitter.create_documents(texts)
+    expected_docs = [
+        Document(page_content="foo bar", metadata={"start_index": 0}),
+        Document(page_content="bar baz", metadata={"start_index": 4}),
+        Document(page_content="baz 123", metadata={"start_index": 8}),
+    ]
+    assert docs == expected_docs
+
+
 def test_metadata_not_shallow() -> None:
     """Test that metadatas are not shallow."""
     texts = ["foo bar"]
@@ -132,6 +149,48 @@ def test_metadata_not_shallow() -> None:
     docs[0].metadata["foo"] = 1
     assert docs[0].metadata == {"source": "1", "foo": 1}
     assert docs[1].metadata == {"source": "1"}
+
+
+def test_iterative_text_splitter_keep_separator() -> None:
+    chunk_size = 5
+    output = __test_iterative_text_splitter(chunk_size=chunk_size, keep_separator=True)
+
+    assert output == [
+        "....5",
+        "X..3",
+        "Y...4",
+        "X....5",
+        "Y...",
+    ]
+
+
+def test_iterative_text_splitter_discard_separator() -> None:
+    chunk_size = 5
+    output = __test_iterative_text_splitter(chunk_size=chunk_size, keep_separator=False)
+
+    assert output == [
+        "....5",
+        "..3",
+        "...4",
+        "....5",
+        "...",
+    ]
+
+
+def __test_iterative_text_splitter(chunk_size: int, keep_separator: bool) -> List[str]:
+    chunk_size += 1 if keep_separator else 0
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=0,
+        separators=["X", "Y"],
+        keep_separator=keep_separator,
+    )
+    text = "....5X..3Y...4X....5Y..."
+    output = splitter.split_text(text)
+    for chunk in output:
+        assert len(chunk) <= chunk_size, f"Chunk is larger than {chunk_size}"
+    return output
 
 
 def test_iterative_text_splitter() -> None:
@@ -202,8 +261,8 @@ CHUNK_SIZE = 16
 
 
 def test_python_code_splitter() -> None:
-    splitter = CodeTextSplitter(
-        language=Language.PYTHON, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.PYTHON, chunk_size=CHUNK_SIZE, chunk_overlap=0
     )
     code = """
 def hello_world():
@@ -225,8 +284,8 @@ hello_world()
 
 
 def test_golang_code_splitter() -> None:
-    splitter = CodeTextSplitter(
-        language=Language.GO, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.GO, chunk_size=CHUNK_SIZE, chunk_overlap=0
     )
     code = """
 package main
@@ -258,8 +317,8 @@ func main() {
 
 
 def test_rst_code_splitter() -> None:
-    splitter = CodeTextSplitter(
-        language=Language.RST, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.RST, chunk_size=CHUNK_SIZE, chunk_overlap=0
     )
     code = """
 Sample Document
@@ -276,6 +335,12 @@ Lists
 - Item 1
 - Item 2
 - Item 3
+
+Comment
+*******
+Not a comment
+
+.. This is a comment
     """
     chunks = splitter.split_text(code)
     assert chunks == [
@@ -286,16 +351,22 @@ Lists
         "This is the",
         "content of the",
         "section.",
-        "Lists\n-----",
+        "Lists",
+        "-----",
         "- Item 1",
         "- Item 2",
         "- Item 3",
+        "Comment",
+        "*******",
+        "Not a comment",
+        ".. This is a",
+        "comment",
     ]
 
 
 def test_proto_file_splitter() -> None:
-    splitter = CodeTextSplitter(
-        language=Language.PROTO, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.PROTO, chunk_size=CHUNK_SIZE, chunk_overlap=0
     )
     code = """
 syntax = "proto3";
@@ -328,8 +399,8 @@ message Person {
 
 
 def test_javascript_code_splitter() -> None:
-    splitter = CodeTextSplitter(
-        language=Language.JS, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.JS, chunk_size=CHUNK_SIZE, chunk_overlap=0
     )
     code = """
 function helloWorld() {
@@ -354,8 +425,8 @@ helloWorld();
 
 
 def test_java_code_splitter() -> None:
-    splitter = CodeTextSplitter(
-        language=Language.JAVA, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.JAVA, chunk_size=CHUNK_SIZE, chunk_overlap=0
     )
     code = """
 public class HelloWorld {
@@ -380,8 +451,8 @@ public class HelloWorld {
 
 
 def test_cpp_code_splitter() -> None:
-    splitter = CodeTextSplitter(
-        language=Language.CPP, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.CPP, chunk_size=CHUNK_SIZE, chunk_overlap=0
     )
     code = """
 #include <iostream>
@@ -405,8 +476,8 @@ int main() {
 
 
 def test_scala_code_splitter() -> None:
-    splitter = CodeTextSplitter(
-        language=Language.SCALA, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.SCALA, chunk_size=CHUNK_SIZE, chunk_overlap=0
     )
     code = """
 object HelloWorld {
@@ -430,8 +501,8 @@ object HelloWorld {
 
 
 def test_ruby_code_splitter() -> None:
-    splitter = CodeTextSplitter(
-        language=Language.RUBY, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.RUBY, chunk_size=CHUNK_SIZE, chunk_overlap=0
     )
     code = """
 def hello_world
@@ -451,8 +522,8 @@ hello_world
 
 
 def test_php_code_splitter() -> None:
-    splitter = CodeTextSplitter(
-        language=Language.PHP, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.PHP, chunk_size=CHUNK_SIZE, chunk_overlap=0
     )
     code = """
 <?php
@@ -478,8 +549,8 @@ hello_world();
 
 
 def test_swift_code_splitter() -> None:
-    splitter = CodeTextSplitter(
-        language=Language.SWIFT, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.SWIFT, chunk_size=CHUNK_SIZE, chunk_overlap=0
     )
     code = """
 func helloWorld() {
@@ -500,8 +571,8 @@ helloWorld()
 
 
 def test_rust_code_splitter() -> None:
-    splitter = CodeTextSplitter(
-        language=Language.RUST, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.RUST, chunk_size=CHUNK_SIZE, chunk_overlap=0
     )
     code = """
 fn main() {
@@ -510,3 +581,248 @@ fn main() {
     """
     chunks = splitter.split_text(code)
     assert chunks == ["fn main() {", 'println!("Hello', ",", 'World!");', "}"]
+
+
+def test_markdown_code_splitter() -> None:
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.MARKDOWN, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    )
+    code = """
+# Sample Document
+
+## Section
+
+This is the content of the section.
+
+## Lists
+
+- Item 1
+- Item 2
+- Item 3
+
+### Horizontal lines
+
+***********
+____________
+-------------------
+
+#### Code blocks
+```
+This is a code block
+```
+    """
+    chunks = splitter.split_text(code)
+    assert chunks == [
+        "# Sample",
+        "Document",
+        "## Section",
+        "This is the",
+        "content of the",
+        "section.",
+        "## Lists",
+        "- Item 1",
+        "- Item 2",
+        "- Item 3",
+        "### Horizontal",
+        "lines",
+        "***********",
+        "____________",
+        "---------------",
+        "----",
+        "#### Code",
+        "blocks",
+        "```",
+        "This is a code",
+        "block",
+        "```",
+    ]
+
+
+def test_html_code_splitter() -> None:
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.HTML, chunk_size=60, chunk_overlap=0
+    )
+    code = """
+<h1>Sample Document</h1>
+    <h2>Section</h2>
+        <p id="1234">Reference content.</p>
+
+    <h2>Lists</h2>
+        <ul>
+            <li>Item 1</li>
+            <li>Item 2</li>
+            <li>Item 3</li>
+        </ul>
+
+        <h3>A block</h3>
+            <div class="amazing">
+                <p>Some text</p>
+                <p>Some more text</p>
+            </div>
+    """
+    chunks = splitter.split_text(code)
+    assert chunks == [
+        "<h1>Sample Document</h1>\n    <h2>Section</h2>",
+        '<p id="1234">Reference content.</p>',
+        "<h2>Lists</h2>\n        <ul>",
+        "<li>Item 1</li>\n            <li>Item 2</li>",
+        "<li>Item 3</li>\n        </ul>",
+        "<h3>A block</h3>",
+        '<div class="amazing">',
+        "<p>Some text</p>",
+        "<p>Some more text</p>\n            </div>",
+    ]
+
+
+def test_md_header_text_splitter_1() -> None:
+    """Test markdown splitter by header: Case 1."""
+
+    markdown_document = (
+        "# Foo\n\n"
+        "    ## Bar\n\n"
+        "Hi this is Jim\n\n"
+        "Hi this is Joe\n\n"
+        " ## Baz\n\n"
+        " Hi this is Molly"
+    )
+    headers_to_split_on = [
+        ("#", "Header 1"),
+        ("##", "Header 2"),
+    ]
+    markdown_splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on=headers_to_split_on,
+    )
+    output = markdown_splitter.split_text(markdown_document)
+    expected_output = [
+        {
+            "content": "Hi this is Jim  \nHi this is Joe",
+            "metadata": {"Header 1": "Foo", "Header 2": "Bar"},
+        },
+        {
+            "content": "Hi this is Molly",
+            "metadata": {"Header 1": "Foo", "Header 2": "Baz"},
+        },
+    ]
+    assert output == expected_output
+
+
+def test_md_header_text_splitter_2() -> None:
+    """Test markdown splitter by header: Case 2."""
+    markdown_document = (
+        "# Foo\n\n"
+        "    ## Bar\n\n"
+        "Hi this is Jim\n\n"
+        "Hi this is Joe\n\n"
+        " ### Boo \n\n"
+        " Hi this is Lance \n\n"
+        " ## Baz\n\n"
+        " Hi this is Molly"
+    )
+
+    headers_to_split_on = [
+        ("#", "Header 1"),
+        ("##", "Header 2"),
+        ("###", "Header 3"),
+    ]
+    markdown_splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on=headers_to_split_on,
+    )
+    output = markdown_splitter.split_text(markdown_document)
+    expected_output = [
+        {
+            "content": "Hi this is Jim  \nHi this is Joe",
+            "metadata": {"Header 1": "Foo", "Header 2": "Bar"},
+        },
+        {
+            "content": "Hi this is Lance",
+            "metadata": {"Header 1": "Foo", "Header 2": "Bar", "Header 3": "Boo"},
+        },
+        {
+            "content": "Hi this is Molly",
+            "metadata": {"Header 1": "Foo", "Header 2": "Baz"},
+        },
+    ]
+    assert output == expected_output
+
+
+def test_md_header_text_splitter_3() -> None:
+    """Test markdown splitter by header: Case 3."""
+
+    markdown_document = (
+        "# Foo\n\n"
+        "    ## Bar\n\n"
+        "Hi this is Jim\n\n"
+        "Hi this is Joe\n\n"
+        " ### Boo \n\n"
+        " Hi this is Lance \n\n"
+        " #### Bim \n\n"
+        " Hi this is John \n\n"
+        " ## Baz\n\n"
+        " Hi this is Molly"
+    )
+
+    headers_to_split_on = [
+        ("#", "Header 1"),
+        ("##", "Header 2"),
+        ("###", "Header 3"),
+        ("####", "Header 4"),
+    ]
+
+    markdown_splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on=headers_to_split_on,
+    )
+    output = markdown_splitter.split_text(markdown_document)
+
+    expected_output = [
+        {
+            "content": "Hi this is Jim  \nHi this is Joe",
+            "metadata": {"Header 1": "Foo", "Header 2": "Bar"},
+        },
+        {
+            "content": "Hi this is Lance",
+            "metadata": {"Header 1": "Foo", "Header 2": "Bar", "Header 3": "Boo"},
+        },
+        {
+            "content": "Hi this is John",
+            "metadata": {
+                "Header 1": "Foo",
+                "Header 2": "Bar",
+                "Header 3": "Boo",
+                "Header 4": "Bim",
+            },
+        },
+        {
+            "content": "Hi this is Molly",
+            "metadata": {"Header 1": "Foo", "Header 2": "Baz"},
+        },
+    ]
+
+    assert output == expected_output
+
+
+def test_solidity_code_splitter() -> None:
+    splitter = RecursiveCharacterTextSplitter.from_language(
+        Language.SOL, chunk_size=CHUNK_SIZE, chunk_overlap=0
+    )
+    code = """pragma solidity ^0.8.20;
+  contract HelloWorld {
+    function add(uint a, uint b) pure public returns(uint) {
+      return  a + b;
+    }
+  }
+  """
+    chunks = splitter.split_text(code)
+    assert chunks == [
+        "pragma solidity",
+        "^0.8.20;",
+        "contract",
+        "HelloWorld {",
+        "function",
+        "add(uint a,",
+        "uint b) pure",
+        "public",
+        "returns(uint) {",
+        "return  a",
+        "+ b;",
+        "}\n  }",
+    ]
