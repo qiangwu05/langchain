@@ -8,6 +8,7 @@ import numpy as np
 
 try:
     import deeplake
+    from deeplake.core.fast_forwarding import version_compare
     from deeplake.core.vectorstore import DeepLakeVectorStore
 
     _DEEPLAKE_INSTALLED = True
@@ -124,11 +125,11 @@ class DeepLake(VectorStore):
                 "Please install it with `pip install deeplake`."
             )
 
-        version = deeplake.__version__
-        if version != "3.6.2":
+        if version_compare(deeplake.__version__, "3.6.2") == -1:
             raise ValueError(
-                "deeplake version should be = 3.6.3, but you've installed"
-                f" {version}. Consider changing deeplake version to 3.6.3 ."
+                "deeplake version should be >= 3.6.3, but you've installed"
+                f" {deeplake.__version__}. Consider upgrading deeplake version \
+                    pip install --upgrade deeplake."
             )
         self.dataset_path = dataset_path
 
@@ -303,7 +304,10 @@ class DeepLake(VectorStore):
             )
 
         if embedding_function:
-            _embedding_function = embedding_function
+            if isinstance(embedding_function, Embeddings):
+                _embedding_function = embedding_function.embed_query
+            else:
+                _embedding_function = embedding_function
         elif self._embedding_function:
             _embedding_function = self._embedding_function.embed_query
         else:
@@ -740,30 +744,23 @@ class DeepLake(VectorStore):
         )
         return deeplake_dataset
 
-    def delete(
-        self,
-        ids: Any[List[str], None] = None,
-        filter: Any[Dict[str, str], None] = None,
-        delete_all: Any[bool, None] = None,
-    ) -> bool:
+    def delete(self, ids: Optional[List[str]] = None, **kwargs: Any) -> bool:
         """Delete the entities in the dataset.
 
         Args:
             ids (Optional[List[str]], optional): The document_ids to delete.
                 Defaults to None.
-            filter (Optional[Dict[str, str]], optional): The filter to delete by.
-                Defaults to None.
-            delete_all (Optional[bool], optional): Whether to drop the dataset.
-                Defaults to None.
+            **kwargs: Other keyword arguments that subclasses might use.
+                - filter (Optional[Dict[str, str]], optional): The filter to delete by.
+                - delete_all (Optional[bool], optional): Whether to drop the dataset.
 
         Returns:
             bool: Whether the delete operation was successful.
         """
-        self.vectorstore.delete(
-            ids=ids,
-            filter=filter,
-            delete_all=delete_all,
-        )
+        filter = kwargs.get("filter")
+        delete_all = kwargs.get("delete_all")
+
+        self.vectorstore.delete(ids=ids, filter=filter, delete_all=delete_all)
 
         return True
 

@@ -171,6 +171,16 @@ class BaseOpenAI(BaseLLM):
     """Set of special tokens that are allowed。"""
     disallowed_special: Union[Literal["all"], Collection[str]] = "all"
     """Set of special tokens that are not allowed。"""
+    tiktoken_model_name: Optional[str] = None
+    """The model name to pass to tiktoken when using this class. 
+    Tiktoken is used to count the number of tokens in documents to constrain 
+    them to be under a certain limit. By default, when set to None, this will 
+    be the same as the embedding model name. However, there are some cases 
+    where you may want to use this Embedding class with a model name not 
+    supported by tiktoken. This can include when using Azure embeddings or 
+    when using one of the many model providers that expose an OpenAI-like 
+    API but with different models. In those cases, in order to avoid erroring 
+    when tiktoken is called, you can specify a model name to use here."""
 
     def __new__(cls, **data: Any) -> Union[OpenAIChat, BaseOpenAI]:  # type: ignore
         """Initialize the OpenAI object."""
@@ -491,7 +501,13 @@ class BaseOpenAI(BaseLLM):
                 "Please install it with `pip install tiktoken`."
             )
 
-        enc = tiktoken.encoding_for_model(self.model_name)
+        model_name = self.tiktoken_model_name or self.model_name
+        try:
+            enc = tiktoken.encoding_for_model(model_name)
+        except KeyError:
+            logger.warning("Warning: model not found. Using cl100k_base encoding.")
+            model = "cl100k_base"
+            enc = tiktoken.get_encoding(model)
 
         return enc.encode(
             text,
@@ -517,10 +533,15 @@ class BaseOpenAI(BaseLLM):
         model_token_mapping = {
             "gpt-4": 8192,
             "gpt-4-0314": 8192,
+            "gpt-4-0613": 8192,
             "gpt-4-32k": 32768,
             "gpt-4-32k-0314": 32768,
+            "gpt-4-32k-0613": 32768,
             "gpt-3.5-turbo": 4096,
             "gpt-3.5-turbo-0301": 4096,
+            "gpt-3.5-turbo-0613": 4096,
+            "gpt-3.5-turbo-16k": 16385,
+            "gpt-3.5-turbo-16k-0613": 16385,
             "text-ada-001": 2049,
             "ada": 2049,
             "text-babbage-001": 2040,
@@ -550,6 +571,11 @@ class BaseOpenAI(BaseLLM):
 
         return context_size
 
+    @property
+    def max_context_size(self) -> int:
+        """Get max context size for this model."""
+        return self.modelname_to_contextsize(self.model_name)
+
     def max_tokens_for_prompt(self, prompt: str) -> int:
         """Calculate the maximum number of tokens possible to generate for a prompt.
 
@@ -565,10 +591,7 @@ class BaseOpenAI(BaseLLM):
                 max_tokens = openai.max_token_for_prompt("Tell me a joke.")
         """
         num_tokens = self.get_num_tokens(prompt)
-
-        # get max context size for model by name
-        max_size = self.modelname_to_contextsize(self.model_name)
-        return max_size - num_tokens
+        return self.max_context_size - num_tokens
 
 
 class OpenAI(BaseOpenAI):
